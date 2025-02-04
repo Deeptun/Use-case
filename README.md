@@ -139,3 +139,34 @@ Slide 20: AI for Leveraged Buyout Risk Assessment
 Value to Underwriters: Enables informed decisions on financing terms and risk exposure.
 Implementation Overview: Model debt-to-equity ratios, cash flow projections, and sector dynamics for risk predictions.
 Use case
+
+In corporate credit risk modeling, default events are rare compared to non-defaults, leading to a severe class imbalance.
+
+Traditional loss functions (e.g., cross-entropy) may not give enough weight to minority class instances, resulting in a biased model.
+
+Focal loss helps by down-weighting easy-to-classify samples and focusing on hard-to-classify minority class instances (defaults).
+
+
+
+2. Reducing Overconfidence in Predictions:
+
+Standard models often yield overconfident predictions in imbalanced settings.
+
+Focal loss adjusts probability distributions, making the model more reliable in risk assessment.
+
+
+
+3. Improving Recall without Sacrificing Precision:
+
+In corporate lending, missing a potential defaulter is riskier than incorrectly flagging a non-defaulter.
+
+Focal loss ensures that the model pays more attention to difficult-to-classify defaulters while maintaining precision.
+
+
+
+4. Better Handling of Noisy Data:
+
+Corporate financials, credit history, and macroeconomic conditions introduce noise in credit risk models.
+
+Focal loss dynamically adjusts to misclassified instances, helping the model learn from difficult samples without overfitting to noise.
+
