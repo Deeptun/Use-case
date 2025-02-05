@@ -168,5 +168,213 @@ Focal loss ensures that the model pays more attention to difficult-to-classify d
 
 Corporate financials, credit history, and macroeconomic conditions introduce noise in credit risk models.
 
+# Exploratory Data Analysis (EDA) in Banking
+## 3-Week Detailed Curriculum
+
+### Week 1: Fundamental Statistical Analysis & Visualization
+#### Session Overview
+**Duration**: 3 hours
+**Prerequisites**: Basic Python, pandas basics
+**Tools Required**: Jupyter Notebook, pandas, numpy, matplotlib, seaborn
+
+#### Module 1: Statistical Foundations (1 hour)
+- Descriptive Statistics in Banking Context
+  - Central tendency measures (mean, median, mode)
+  - Dispersion measures (variance, standard deviation, IQR)
+  - Skewness and kurtosis in financial data
+  
+**Practical Exercise**: Analyzing Credit Card Transaction Distributions
+```python
+# Example code snippet
+def analyze_transaction_statistics(transactions_df):
+    stats = {
+        'mean': transactions_df['amount'].mean(),
+        'median': transactions_df['amount'].median(),
+        'std': transactions_df['amount'].std(),
+        'skewness': transactions_df['amount'].skew(),
+        'kurtosis': transactions_df['amount'].kurtosis()
+    }
+    return pd.Series(stats)
+```
+
+#### Module 2: Basic Data Visualization (1 hour)
+- Essential Banking Visualizations
+  - Histograms for transaction amounts
+  - Box plots for outlier detection
+  - Time series plots for daily balances
+  - Bar charts for categorical analysis
+
+**Case Study**: Visualizing Customer Spending Patterns
+```python
+def plot_spending_patterns(transactions_df):
+    plt.figure(figsize=(12, 6))
+    sns.boxplot(x='category', y='amount', data=transactions_df)
+    plt.title('Transaction Amounts by Category')
+    plt.xticks(rotation=45)
+```
+
+#### Module 3: Data Quality Assessment (1 hour)
+- Missing Value Analysis
+- Duplicate Detection
+- Outlier Identification
+- Data Type Verification
+
+**Hands-on Workshop**: Data Quality Report Generation
+- Creating automated data quality reports
+- Identifying data anomalies
+- Documenting data issues
+
+#### Week 1 Assignment
+Build a comprehensive EDA report for a sample credit card dataset, including:
+- Statistical summary
+- Distribution analysis
+- Quality assessment
+- Key findings presentation
+
+### Week 2: Advanced Statistical Analysis & Financial Metrics
+#### Session Overview
+**Duration**: 3 hours
+**Focus**: Deep dive into financial metrics and relationships
+
+#### Module 1: Correlation Analysis (1 hour)
+- Correlation Types in Banking
+  - Pearson correlation
+  - Spearman correlation
+  - Point-biserial correlation
+  
+**Practice Exercise**: Portfolio Analysis
+```python
+def analyze_portfolio_correlations(returns_df):
+    corr_matrix = returns_df.corr(method='pearson')
+    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm')
+    plt.title('Asset Return Correlations')
+```
+
+#### Module 2: Time-Based Analysis (1 hour)
+- Temporal Patterns in Banking Data
+  - Moving averages
+  - Rolling statistics
+  - Seasonality detection
+  
+**Case Study**: Transaction Volume Analysis
+```python
+def analyze_transaction_patterns(transactions_df):
+    # Daily volume analysis
+    daily_volume = transactions_df.resample('D')['amount'].sum()
+    # Moving average calculation
+    ma_7 = daily_volume.rolling(window=7).mean()
+    ma_30 = daily_volume.rolling(window=30).mean()
+```
+
+#### Module 3: Financial Ratio Analysis (1 hour)
+- Key Banking Ratios
+  - Liquidity ratios
+  - Efficiency ratios
+  - Profitability ratios
+  
+**Workshop**: Building a Financial Health Dashboard
+- Calculating key ratios
+- Visualizing trends
+- Identifying red flags
+
+#### Week 2 Assignment
+Develop an interactive dashboard showing:
+- Correlation analysis
+- Time-based patterns
+- Financial ratio trends
+- Anomaly detection
+
+### Week 3: Advanced Visualization & Reporting
+#### Session Overview
+**Duration**: 3 hours
+**Focus**: Complex visualizations and automated reporting
+
+#### Module 1: Advanced Visualization Techniques (1 hour)
+- Complex Banking Visualizations
+  - Waterfall charts for P&L analysis
+  - Sankey diagrams for fund flows
+  - Network graphs for transaction relationships
+  
+**Practice Exercise**: Transaction Flow Visualization
+```python
+def create_transaction_flow(transactions_df):
+    # Sankey diagram for money flow between accounts
+    fig = go.Figure(data=[go.Sankey(
+        node = dict(label = unique_accounts),
+        link = dict(
+            source = source_indices,
+            target = target_indices,
+            value = amounts
+        )
+    )])
+```
+
+#### Module 2: Interactive Dashboards (1 hour)
+- Building Interactive Tools
+  - Plotly for interactive plots
+  - Dash for web dashboards
+  - ipywidgets for notebook interactivity
+  
+**Case Study**: Risk Dashboard Development
+```python
+def create_risk_dashboard(risk_data):
+    app = dash.Dash()
+    app.layout = html.Div([
+        dcc.Graph(figure=create_risk_heatmap()),
+        dcc.Graph(figure=create_exposure_timeline()),
+        dcc.Dropdown(id='risk-metric-selector')
+    ])
+```
+
+#### Module 3: Automated Reporting (1 hour)
+- Report Automation
+  - Template creation
+  - Automated data updates
+  - Scheduling and distribution
+  
+**Workshop**: Building an Automated EDA Pipeline
+- Setting up automated data processing
+- Generating scheduled reports
+- Creating alert systems
+
+#### Week 3 Assignment
+Create a complete EDA system including:
+- Interactive dashboard
+- Automated daily reports
+- Alert mechanism for anomalies
+- Documentation and presentation
+
+### Assessment Criteria
+- Weekly Assignments (60%)
+  - Code quality (20%)
+  - Analysis depth (20%)
+  - Visualization effectiveness (20%)
+- Final Project (40%)
+  - Technical implementation (15%)
+  - Business insights (15%)
+  - Presentation (10%)
+
+### Learning Outcomes
+By the end of these three weeks, participants will be able to:
+1. Perform comprehensive statistical analysis on banking data
+2. Create sophisticated visualizations for financial insights
+3. Build interactive dashboards for data exploration
+4. Implement automated reporting systems
+5. Identify and communicate key patterns in banking data
+6. Generate actionable insights from complex financial datasets
+
+### Required Datasets
+- Credit card transactions
+- Customer account data
+- Loan portfolio data
+- Investment returns
+- Risk metrics data
+
+### Additional Resources
+- Banking domain knowledge materials
+- Statistical analysis references
+- Visualization galleries
+- Best practices documentation
+- Code templates and examples
 Focal loss dynamically adjusts to misclassified instances, helping the model learn from difficult samples without overfitting to noise.
 
