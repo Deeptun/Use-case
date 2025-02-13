@@ -97,3 +97,10 @@ for column in results.columns:
     print(f"Standard Deviation: {results[column].std():.2f}")
     print(f"IQR: {iqr:.2f}")
     print(f"Coefficient of Variation: {results[column].std() / results[column].mean():.2f}")
+
+
+# Identify IDs where all revenue values are below the threshold
+ids_to_remove = df.groupby("id")["revenue"].transform(lambda x: (x < threshold).all())
+
+# Keep only those IDs where not all values are below the threshold
+df_filtered = df[~ids_to_remove]
