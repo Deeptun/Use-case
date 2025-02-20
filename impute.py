@@ -46,3 +46,44 @@ Explanation:
 
 This ensures that weekends retain the last known values while random missing weekdays are replaced with zero. Let me know if you need modifications!
 
+You can filter out companies that have only NaN or 0 loan values in the last 12 months while keeping those that have at least one non-zero loan entry. Here's the Python code:
+
+import pandas as pd
+
+# Convert 'date' to datetime format (if not already)
+df['date'] = pd.to_datetime(df['date'])
+
+# Define the cutoff date for the last 12 months
+end_date = df['date'].max()
+start_date = end_date - pd.DateOffset(years=1)
+
+# Filter last 12 months' data
+last_12_months = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
+
+# Identify companies where all loan values in the last 12 months are either NaN or 0
+invalid_companies = last_12_months.groupby('company_id')['loan'].apply(lambda x: (x.isna() | (x == 0)).all())
+
+# Filter out these companies from the main dataset
+valid_companies = invalid_companies[~invalid_companies].index  # Companies with at least one non-zero loan entry
+filtered_df = df[df['company_id'].isin(valid_companies)]
+
+# Display the updated DataFrame
+print(filtered_df)
+
+Explanation:
+
+1. Extract the last 12 months' data based on the date column.
+
+
+2. Check if all loan values in the last 12 months are either NaN or 0 for each company_id.
+
+
+3. Keep only those companies where at least one loan value is non-zero.
+
+
+4. Filter the original dataset to include only these valid companies.
+
+
+
+This ensures you retain only companies that had at least one non-zero loan entry in the last 12 months, regardless of their deposit or other KPI data. Let me know if you need modifications!
+
