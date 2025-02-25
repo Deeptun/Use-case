@@ -378,3 +378,4 @@ By the end of these three weeks, participants will be able to:
 - Code templates and examples
 Focal loss dynamically adjusts to misclassified instances, helping the model learn from difficult samples without overfitting to noise.
 
+Investment advisors spend excessive time manually analyzing financial documents, earnings reports, and market trends to create personalized investment recommendations. This process is labor-intensive, prone to human error, and limits the number of clients an advisor can effectively serve. By implementing an LLM solution to analyze financial documents and generate insights, we can dramatically improve efficiency, consistency, and the quality of investment advice while allowing advisors to focus on client relationships
