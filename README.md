@@ -378,4 +378,22 @@ By the end of these three weeks, participants will be able to:
 - Code templates and examples
 Focal loss dynamically adjusts to misclassified instances, helping the model learn from difficult samples without overfitting to noise.
 
-Investment advisors spend excessive time manually analyzing financial documents, earnings reports, and market trends to create personalized investment recommendations. This process is labor-intensive, prone to human error, and limits the number of clients an advisor can effectively serve. By implementing an LLM solution to analyze financial documents and generate insights, we can dramatically improve efficiency, consistency, and the quality of investment advice while allowing advisors to focus on client relationships
+Create the DataFrame
+df = pd.DataFrame(data, index=index).reset_index()
+
+# Define a helper function to calculate the fraction of valid entries
+def fraction_valid(series):
+    valid_mask = (series != 0) & (series.notna()) & np.isfinite(series)
+    return valid_mask.mean()
+
+# Filter the DataFrame
+filtered_df = df.groupby('company_id').filter(
+    lambda group: (
+        fraction_valid(group['deposit_balance']) > 0.8 and
+        fraction_valid(group['used_loan_amount']) > 0.8 and
+        fraction_valid(group['unused_loan_amount']) > 0.8
+    )
+)
+
+# Display the result
+print(filtered_df)
