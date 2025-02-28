@@ -378,22 +378,48 @@ By the end of these three weeks, participants will be able to:
 - Code templates and examples
 Focal loss dynamically adjusts to misclassified instances, helping the model learn from difficult samples without overfitting to noise.
 
-Create the DataFrame
-df = pd.DataFrame(data, index=index).reset_index()
+Here's a more detailed yet still management-friendly version of Slides 4 and 5 with added technical depth:
 
-# Define a helper function to calculate the fraction of valid entries
-def fraction_valid(series):
-    valid_mask = (series != 0) & (series.notna()) & np.isfinite(series)
-    return valid_mask.mean()
+Slide 4: Trend Analysis Engine - How We Predict Risks
+Title: "Our Financial Weather Radar System"
+Visual: 3-layer timeline diagram (30-day, 90-day, 180-day windows)
 
-# Filter the DataFrame
-filtered_df = df.groupby('company_id').filter(
-    lambda group: (
-        fraction_valid(group['deposit_balance']) > 0.8 and
-        fraction_valid(group['used_loan_amount']) > 0.8 and
-        fraction_valid(group['unused_loan_amount']) > 0.8
-    )
-)
+Key Components:
+Speed Measurement
 
-# Display the result
-print(filtered_df)
+Metric: "Trend Slope" (Angle of change)
+
+Example:
+
+Loan Use ↗️ 0.8° = Slow increase
+
+Loan Use ↗️ 2.5° = Rapid acceleration
+
+Direction Tracking
+
+Formula: 3-Month Consensus
+
+Rule: 3 consecutive months of deposit decline → Yellow alert
+
+Relationship Analysis
+
+Technical Tool: 30-day Rolling Correlation Score (-1 to +1)
+
+Simple Translation:
+
+Score +0.7 = Loans & deposits move together
+
+Score -0.6 = They move opposite (Risk signal)
+
+Background color changes (Green → Yellow → Red) based on rules]
+
+Slide 5: Risk Pattern Detection Logic
+Title: "Our 5 Financial Fire Alarms"
+Visual: Dashboard-like interface with color-coded alerts
+
+Pattern	Technical Definition	Detection Logic	Monitoring Window
+Diverging Paths	Negative correlation (-0.6) + Trend mismatch	Loan slope >0.3	Deposit slope <-0.2	90-day rolling
+Silent Drain	Small but persistent deposit loss	-1% to -3% monthly decline for 6 months	180-day trend
+Loan Surge	Rapid credit line expansion	>50% loan increase in 30 days	30-day spike
+Double Trouble	Both deposits ↘️ & loans ↗️	Correlation <-0.7 + Both metrics cross thresholds	Real-time + 60-day
+Volatility Spike	Erratic deposit behavior	30-day deposit volatility >2x 90-day avg	Rolling comparison
