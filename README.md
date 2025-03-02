@@ -423,3 +423,38 @@ Silent Drain	Small but persistent deposit loss	-1% to -3% monthly decline for 6 
 Loan Surge	Rapid credit line expansion	>50% loan increase in 30 days	30-day spike
 Double Trouble	Both deposits ↘️ & loans ↗️	Correlation <-0.7 + Both metrics cross thresholds	Real-time + 60-day
 Volatility Spike	Erratic deposit behavior	30-day deposit volatility >2x 90-day avg	Rolling comparison
+
+import os
+import shutil
+import pandas as pd
+
+# Define the source and destination folders
+source_folder = 'path/to/source/folder'
+destination_folder = 'path/to/destination/folder'
+
+# Search for an Excel file in the source folder
+excel_files = [f for f in os.listdir(source_folder) if f.endswith('.xlsx') or f.endswith('.xls')]
+
+if not excel_files:
+    print("No Excel file found in the source folder.")
+else:
+    # Assuming there's only one Excel file, take the first one
+    excel_file = excel_files[0]
+    file_path = os.path.join(source_folder, excel_file)
+
+    # Read the Excel file using pandas
+    df = pd.read_excel(file_path)
+    print("Excel file read successfully.")
+
+    # Define the destination file path
+    destination_file_path = os.path.join(destination_folder, excel_file)
+
+    # Move the file to the destination folder
+    shutil.move(file_path, destination_file_path)
+    print(f"File moved to {destination_folder}.")
+
+    # Optionally, you can print the DataFrame or perform other operations
+    print(df)
+
+    # Delete the file from the original location (though shutil.move already does this)
+    # os.remove(file_path)  # This line is not needed as shutil.move already removes the file
