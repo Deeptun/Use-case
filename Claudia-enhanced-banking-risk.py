@@ -217,7 +217,9 @@ def add_derived_metrics(df):
         # Add new metrics for enhanced risk detection
         
         # 1. Calculate utilization acceleration (2nd derivative)
-        df.loc[company_data.index, 'util_acceleration_30d'] = company_data['util_change_30d'].pct_change(periods=30)
+        # df.loc[company_data.index, 'util_acceleration_30d'] = company_data['util_change_30d'].pct_change(periods=30)
+        
+        df.loc[company_data.index, 'util_acceleration_30d'] = df.loc[company_data.index, 'util_change_30d'].pct_change(periods=30)
         
         # 2. Calculate deposit concentration metrics (for detecting lumpy deposits)
         if len(company_data) >= 90:
@@ -269,13 +271,15 @@ def add_derived_metrics(df):
         # 4. Calculate historical minimums and current proximity
         if len(company_data) >= 180:
             # Calculate rolling 180-day minimum
-            df.loc[company_data.index, 'deposit_min_180d'] = company_data['deposit_balance'].rolling(
-                180, min_periods=90).min()
+            min_deposits = company_data['deposit_balance'].rolling(180, min_periods=90).min()
+            df.loc[company_data.index, 'deposit_min_180d'] = min_deposits
             
-            # Calculate ratio of current to historical minimum
-            df.loc[company_data.index, 'deposit_to_min_ratio'] = (
-                company_data['deposit_balance'] / company_data['deposit_min_180d']
-            )
+            # Calculate ratio only where we have valid minimums
+            valid_indices = min_deposits.notna()
+            if valid_indices.any():
+                df.loc[company_data.index[valid_indices], 'deposit_to_min_ratio'] = (
+                    company_data.loc[valid_indices, 'deposit_balance'] / min_deposits[valid_indices]
+                )
     
     return df
 
@@ -1050,7 +1054,7 @@ def plot_persona_transitions(transitions_df, risk_increase_df):
     
     # Plot heatmap with custom colormap that emphasizes higher values
     cmap = sns.color_palette("YlGnBu", as_cmap=True)
-    heatmap = sns.heatmap(pivot_transitions, annot=True, fmt='d', cmap=cmap, 
+    heatmap = sns.heatmap(pivot_transitions, annot=True, cmap=cmap, 
                          cbar_kws={'label': 'Number of Transitions'})
     
     # Improve appearance
