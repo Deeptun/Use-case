@@ -369,6 +369,63 @@ def detect_seasonality(df, company_data, min_periods=365):
         # If seasonality detection fails, continue without it
         pass
 
+def filter_stable_companies(df_with_metrics, recent_risk_df, min_util_change=0.02, months=12):
+    """
+    Filters out companies whose loan utilization has remained relatively unchanged.
+    
+    Parameters:
+    -----------
+    df_with_metrics : pandas.DataFrame
+        DataFrame containing metrics including loan utilization
+    recent_risk_df : pandas.DataFrame
+        DataFrame containing recent risk assessments
+    min_util_change : float
+        Minimum change in utilization required to include company (default: 0.02 or 2%)
+    months : int
+        Number of months to look back for utilization changes (default: 12)
+        
+    Returns:
+    --------
+    pandas.DataFrame
+        Filtered DataFrame containing only companies with significant utilization changes
+    """
+    if df_with_metrics is None or recent_risk_df is None or recent_risk_df.empty:
+        return recent_risk_df
+    
+    # Get the most recent date in the data
+    max_date = df_with_metrics['date'].max()
+    
+    # Define the lookback period
+    lookback_date = max_date - pd.DateOffset(months=months)
+    
+    # Filter companies based on utilization change
+    dynamic_companies = []
+    
+    for company_id in recent_risk_df['company_id'].unique():
+        # Get company metrics during lookback period
+        company_data = df_with_metrics[
+            (df_with_metrics['company_id'] == company_id) & 
+            (df_with_metrics['date'] >= lookback_date)
+        ].sort_values('date')
+        
+        # Skip if not enough data
+        if len(company_data) < 2:
+            continue
+            
+        # Calculate max utilization change
+        util_max = company_data['loan_utilization'].max()
+        util_min = company_data['loan_utilization'].min()
+        util_change = util_max - util_min
+        
+        # Include company if utilization changed more than threshold
+        if util_change >= min_util_change:
+            dynamic_companies.append(company_id)
+    
+    # Filter the risk DataFrame to include only dynamic companies
+    filtered_risk_df = recent_risk_df[recent_risk_df['company_id'].isin(dynamic_companies)]
+    
+    return filtered_risk_df
+
 def detect_risk_patterns_efficient(df):
     """
     Efficient implementation of risk pattern detection based on rolling metrics
@@ -758,6 +815,42 @@ def detect_risk_patterns_efficient(df):
                                                    'risk_level', 'persona', 'current_util', 'current_deposit'])
         return risk_df, persona_df, recent_risk_summary
 
+def filter_high_risk_companies(risk_df, persona_df, min_confidence=0.7):
+    """
+    Filters persona data to focus only on high-risk companies with high confidence.
+    
+    Parameters:
+    -----------
+    risk_df : pandas.DataFrame
+        DataFrame containing risk assessments
+    persona_df : pandas.DataFrame
+        DataFrame containing persona assignments
+    min_confidence : float
+        Minimum confidence threshold for persona assignment (default: 0.7)
+        
+    Returns:
+    --------
+    pandas.DataFrame
+        Filtered persona DataFrame with only high-risk, high-confidence entries
+    """
+    if risk_df is None or persona_df is None or risk_df.empty or persona_df.empty:
+        return None
+    
+    # Get high-risk company IDs
+    high_risk_companies = risk_df[risk_df['risk_level'] == 'high']['company_id'].unique()
+    
+    if len(high_risk_companies) == 0:
+        print("No high-risk companies found. Falling back to medium risk.")
+        high_risk_companies = risk_df[risk_df['risk_level'] == 'medium']['company_id'].unique()
+    
+    # Filter persona DataFrame for high-risk companies and high confidence
+    high_risk_persona_df = persona_df[
+        (persona_df['company_id'].isin(high_risk_companies)) &
+        (persona_df['confidence'] >= min_confidence)
+    ].copy()
+    
+    return high_risk_persona_df
+    
 def calculate_persona_affinity(persona_df):
     """
     Calculate affinity scores for each company-persona combination.
@@ -1150,7 +1243,7 @@ def plot_risk_company(company_id, df, risk_df, recent_risks_df):
         return None
     
     # Create figure with two y-axes
-    fig, ax1 = plt.subplots(figsize=(16, 10))
+    fig, ax1 = plt.subplots(figsize=(16, 6))
     
     # First axis - Loan Utilization
     color = '#1f77b4'  # Blue
@@ -1758,6 +1851,566 @@ def plot_clusters(feature_df, cluster_profiles_df):
     
     return fig
 
+def plot_persona_journey(persona_df, risk_df, months=6, max_companies=10):
+    """
+    Visualize how high-risk companies move between personas over time.
+    
+    Args:
+        persona_df: DataFrame containing persona assignments
+        risk_df: DataFrame containing risk assessments
+        months: Number of months to include in the visualization (default: 6)
+        max_companies: Maximum number of companies to include (default: 10)
+    
+    Returns:
+        matplotlib figure object
+    """
+    
+    if persona_df is None or persona_df.empty:
+        print("No persona data available for journey visualization.")
+        return None
+    
+    # Filter for recent data (last N months)
+    end_date = persona_df['date'].max()
+    start_date = end_date - pd.Timedelta(days=30*months)
+    recent_persona_df = persona_df[persona_df['date'] >= start_date].copy()
+    
+    if recent_persona_df.empty:
+        print("No recent persona data available.")
+        return None
+    
+    # Find high-risk companies
+    high_risk_companies = risk_df[risk_df['risk_level'] == 'high']['company_id'].unique()
+    
+    # If no high-risk companies, fall back to medium risk
+    if len(high_risk_companies) == 0:
+        high_risk_companies = risk_df[risk_df['risk_level'] == 'medium']['company_id'].unique()
+        print("No high-risk companies found, using medium-risk companies instead.")
+    
+    # Filter for high-risk companies
+    high_risk_persona_df = recent_persona_df[recent_persona_df['company_id'].isin(high_risk_companies)]
+    
+    if high_risk_persona_df.empty:
+        print("No high-risk companies with persona data available.")
+        return None
+    
+    # Calculate persona affinity to identify companies with high movement
+    company_movements = {}
+    for company_id in high_risk_persona_df['company_id'].unique():
+        company_data = high_risk_persona_df[high_risk_persona_df['company_id'] == company_id]
+        unique_personas = company_data['persona'].nunique()
+        company_movements[company_id] = {
+            'unique_personas': unique_personas,
+            'records': len(company_data),
+            'movement_score': unique_personas / max(1, len(company_data)) * 100
+        }
+    
+    # Convert to DataFrame and sort by movement_score (descending)
+    movement_df = pd.DataFrame.from_dict(company_movements, orient='index').reset_index()
+    movement_df.columns = ['company_id', 'unique_personas', 'records', 'movement_score']
+    movement_df = movement_df.sort_values(['movement_score', 'records'], ascending=[False, False])
+    
+    # Select top N companies with highest movement
+    top_companies = movement_df.head(max_companies)['company_id'].tolist()
+    
+    # Prepare data for visualization
+    # Group by company and month to get monthly persona
+    high_risk_persona_df['month'] = high_risk_persona_df['date'].dt.to_period('M')
+    
+    # For each company and month, get the most frequent persona
+    monthly_personas = []
+    for company_id in top_companies:
+        company_data = high_risk_persona_df[high_risk_persona_df['company_id'] == company_id]
+        
+        for month, month_data in company_data.groupby('month'):
+            # Get most common persona for this month
+            persona_counts = month_data['persona'].value_counts()
+            if not persona_counts.empty:
+                dominant_persona = persona_counts.index[0]
+                confidence = month_data[month_data['persona'] == dominant_persona]['confidence'].mean()
+                
+                # Get risk level
+                risk_levels = month_data['risk_level'].value_counts()
+                risk_level = risk_levels.index[0] if not risk_levels.empty else 'low'
+                
+                monthly_personas.append({
+                    'company_id': company_id,
+                    'month': month,
+                    'month_date': month.to_timestamp(),
+                    'persona': dominant_persona,
+                    'confidence': confidence,
+                    'risk_level': risk_level
+                })
+    
+    monthly_persona_df = pd.DataFrame(monthly_personas)
+    
+    if monthly_persona_df.empty:
+        print("No monthly persona data available after filtering.")
+        return None
+    
+    # Create visualization
+    # This will be a multi-line plot where each line represents a company's journey
+    fig, ax = plt.subplots(figsize=(15, 10))
+    
+    # Get all unique personas for y-axis
+    all_personas = sorted(monthly_persona_df['persona'].unique())
+    
+    # Create a mapping of persona to y-position
+    persona_positions = {persona: i for i, persona in enumerate(all_personas)}
+    
+    # Create a color map for risk levels
+    risk_colors = {'high': '#d62728', 'medium': '#ff7f0e', 'low': '#2ca02c'}
+    
+    # Plot each company's journey
+    for i, company_id in enumerate(top_companies):
+        company_data = monthly_persona_df[monthly_persona_df['company_id'] == company_id].sort_values('month_date')
+        
+        if len(company_data) < 2:
+            continue
+        
+        # Extract data
+        dates = company_data['month_date']
+        personas = company_data['persona'].map(persona_positions)
+        risks = company_data['risk_level']
+        confidences = company_data['confidence']
+        
+        # Line color based on most recent risk level
+        most_recent_risk = risks.iloc[-1]
+        line_color = risk_colors.get(most_recent_risk, '#1f77b4')
+        
+        # Line width based on confidence
+        avg_confidence = confidences.mean()
+        line_width = 1 + 3 * avg_confidence
+        
+        # Plot the line with markers showing risk level
+        ax.plot(dates, personas, '-o', linewidth=line_width, color=line_color, alpha=0.7, 
+                label=f"{company_id} ({most_recent_risk.upper()})")
+        
+        # Add markers for each point, colored by risk level
+        for j, (date, persona, risk, confidence) in enumerate(zip(dates, personas, risks, confidences)):
+            marker_color = risk_colors.get(risk, '#1f77b4')
+            marker_size = 100 * confidence
+            ax.scatter(date, persona, s=marker_size, color=marker_color, edgecolor='black', zorder=10)
+            
+            # Add arrow annotations for persona changes
+            if j > 0 and personas.iloc[j] != personas.iloc[j-1]:
+                ax.annotate("",
+                            xy=(date, persona), 
+                            xytext=(dates.iloc[j-1], personas.iloc[j-1]),
+                            arrowprops=dict(arrowstyle="->", color=line_color, lw=1.5),
+                            zorder=5)
+        
+        # Add company label at the end of the line
+        ax.text(dates.iloc[-1], personas.iloc[-1], f"  {company_id}", 
+                va='center', ha='left', fontsize=9, fontweight='bold',
+                bbox=dict(boxstyle="round,pad=0.2", fc='white', alpha=0.8))
+    
+    # Set up axis labels and title
+    ax.set_yticks(range(len(all_personas)))
+    ax.set_yticklabels(all_personas)
+    
+    # Format x-axis to show months
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+    ax.xaxis.set_major_locator(mdates.MonthLocator())
+    plt.xticks(rotation=45)
+    
+    # Add grid
+    ax.grid(True, linestyle='--', alpha=0.7)
+    
+    # Add legend for risk levels
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], marker='o', color='w', markerfacecolor=color, markersize=10, label=level.upper())
+        for level, color in risk_colors.items()
+    ]
+    ax.legend(handles=legend_elements, title="Risk Levels", loc='upper right')
+    
+    # Add persona descriptions in a text box
+    persona_desc = []
+    for persona in all_personas:
+        description = CONFIG['risk']['persona_patterns'].get(persona, "Unknown")
+        persona_desc.append(f"{persona}: {description}")
+    
+    # Create a text box with descriptions
+    desc_text = "\n".join(persona_desc)
+    props = dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8)
+    ax.text(0.01, 0.01, desc_text, transform=ax.transAxes, fontsize=8,
+            verticalalignment='bottom', bbox=props)
+    
+    # Add title and labels
+    ax.set_title(f'Client Persona Journey Over Last {months} Months (High Risk Companies)', 
+                fontsize=16, fontweight='bold')
+    ax.set_xlabel('Month', fontsize=12)
+    ax.set_ylabel('Persona', fontsize=12)
+    
+    plt.tight_layout()
+    return fig
+
+def plot_high_risk_by_persona(recent_risk_df):
+    """
+    Create a visualization showing high-risk companies by persona.
+    Skip personas with no high-risk companies.
+    
+    Args:
+        recent_risk_df: DataFrame containing recent risk assessments
+        
+    Returns:
+        matplotlib figure object
+    """    
+    if recent_risk_df is None or recent_risk_df.empty:
+        print("No recent risk data available for visualization.")
+        return None
+    
+    # Filter for high-risk companies only
+    high_risk_df = recent_risk_df[recent_risk_df['risk_level'] == 'high'].copy()
+    
+    if high_risk_df.empty:
+        print("No high-risk companies found in recent data.")
+        return None
+    
+    # Count companies by persona
+    persona_counts = high_risk_df.groupby('persona').size().reset_index(name='count')
+    
+    # Sort by count (descending)
+    persona_counts = persona_counts.sort_values('count', ascending=False)
+    
+    # Create visualization
+    fig, ax = plt.subplots(figsize=(14, 8))
+    
+    # Set up a custom color palette (red shades for high risk)
+    palette = sns.color_palette("Reds_r", len(persona_counts))
+    
+    # Create bar plot
+    bars = ax.bar(persona_counts['persona'], persona_counts['count'], color=palette)
+    
+    # Add data labels on bars
+    for bar in bars:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                f'{height:.0f}', ha='center', va='bottom', fontweight='bold')
+    
+    # Add title and labels
+    ax.set_title('High-Risk Companies by Persona', fontsize=16, fontweight='bold')
+    ax.set_xlabel('Persona', fontsize=12)
+    ax.set_ylabel('Number of High-Risk Companies', fontsize=12)
+    
+    # Rotate x-axis labels for readability
+    plt.xticks(rotation=45, ha='right')
+    
+    # Add persona descriptions
+    persona_desc = []
+    for persona in persona_counts['persona']:
+        description = CONFIG['risk']['persona_patterns'].get(persona, "Unknown")
+        persona_desc.append(f"{persona}: {description}")
+    
+    # Create a text box with descriptions
+    desc_text = "\n".join(persona_desc)
+    props = dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8)
+    ax.text(0.01, 0.01, desc_text, transform=ax.transAxes, fontsize=8,
+            verticalalignment='bottom', bbox=props)
+    
+    # Add grid lines for readability
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    
+    # Calculate some statistics to add to the plot
+    total_high_risk = persona_counts['count'].sum()
+    avg_per_persona = persona_counts['count'].mean()
+    max_persona = persona_counts.iloc[0]['persona']
+    max_count = persona_counts.iloc[0]['count']
+    
+    stats_text = (
+        f"Total High-Risk Companies: {total_high_risk}\n"
+        f"Average per Persona: {avg_per_persona:.1f}\n"
+        f"Most Common: {max_persona} ({max_count} companies)"
+    )
+    
+    # Add stats text box
+    stats_props = dict(boxstyle='round,pad=0.5', facecolor='lightyellow', alpha=0.9)
+    ax.text(0.99, 0.99, stats_text, transform=ax.transAxes, fontsize=10,
+            horizontalalignment='right', verticalalignment='top', bbox=stats_props)
+    
+    plt.tight_layout()
+    return fig
+
+def plot_high_risk_persona_flow(persona_df, df_with_metrics, risk_df, months=6):
+    """
+    Creates a visualization that tracks high-risk clients as they move between personas
+    over a specified time period with monthly granularity.
+    
+    Parameters:
+    -----------
+    persona_df : pandas.DataFrame
+        DataFrame containing persona assignments over time
+    df_with_metrics : pandas.DataFrame
+        DataFrame with all metrics including loan utilization data
+    risk_df : pandas.DataFrame
+        DataFrame containing risk assessments
+    months : int
+        Number of months to include in the visualization (default: 6)
+    
+    Returns:
+    --------
+    matplotlib.figure.Figure
+        The figure object containing the visualization
+    """
+    if persona_df is None or persona_df.empty:
+        print("No persona data available for flow analysis.")
+        return None
+    
+    # Get the latest date in the data
+    max_date = persona_df['date'].max()
+    
+    # Calculate the start date for our analysis period
+    start_date = max_date - pd.DateOffset(months=months)
+    
+    # Filter for only the data within our time range
+    recent_persona_df = persona_df[persona_df['date'] >= start_date].copy()
+    
+    # Filter for only high-risk clients
+    high_risk_companies = risk_df[
+        (risk_df['risk_level'] == 'high') & 
+        (risk_df['date'] >= start_date)
+    ]['company_id'].unique()
+    
+    if len(high_risk_companies) == 0:
+        print("No high-risk companies found in the selected time period.")
+        return None
+    
+    # Filter for only high-risk companies
+    high_risk_persona_df = recent_persona_df[recent_persona_df['company_id'].isin(high_risk_companies)].copy()
+    
+    # Check if we have enough data
+    if high_risk_persona_df.empty:
+        print("No persona data available for high-risk companies.")
+        return None
+    
+    # Add month as a period column for easier grouping
+    high_risk_persona_df['month'] = high_risk_persona_df['date'].dt.to_period('M')
+    
+    # For each month, get the dominant persona for each company
+    monthly_personas = []
+    
+    for company_id, company_data in high_risk_persona_df.groupby('company_id'):
+        # Check if loan utilization has remained unchanged (within 2%)
+        if df_with_metrics is not None:
+            company_metrics = df_with_metrics[df_with_metrics['company_id'] == company_id].copy()
+            if not company_metrics.empty:
+                company_metrics = company_metrics.sort_values('date')
+                
+                # Get utilization data for the last 12 months
+                yearly_cutoff = max_date - pd.DateOffset(months=12)
+                recent_utilization = company_metrics[company_metrics['date'] >= yearly_cutoff]['loan_utilization']
+                
+                if len(recent_utilization) >= 2:
+                    # Calculate max change in utilization
+                    max_util = recent_utilization.max()
+                    min_util = recent_utilization.min()
+                    
+                    # Skip if utilization change is less than 2%
+                    if max_util - min_util < 0.02:
+                        continue
+        
+        # For each month, find the dominant persona with higher confidence threshold
+        for month, month_data in company_data.groupby('month'):
+            # Only include if confidence is high (>0.7) - stricter classification
+            high_conf_data = month_data[month_data['confidence'] > 0.7]
+                
+            if not high_conf_data.empty:
+                # Get the persona with highest confidence
+                best_persona = high_conf_data.loc[high_conf_data['confidence'].idxmax()]
+                
+                monthly_personas.append({
+                    'company_id': company_id,
+                    'month': month,
+                    'persona': best_persona['persona'],
+                    'confidence': best_persona['confidence'],
+                    'risk_level': best_persona['risk_level']
+                })
+    
+    monthly_persona_df = pd.DataFrame(monthly_personas)
+    
+    if monthly_persona_df.empty:
+        print("No high-confidence persona data available for high-risk companies.")
+        return None
+    
+    # Convert the month period back to datetime for plotting
+    monthly_persona_df['month_dt'] = monthly_persona_df['month'].dt.to_timestamp()
+    
+    # Sort the months in chronological order
+    all_months = sorted(monthly_persona_df['month'].unique())
+    
+    # Get unique personas after filtering
+    unique_personas = monthly_persona_df['persona'].unique()
+    
+    if len(unique_personas) < 2:
+        print("Not enough different personas to visualize transitions.")
+        return None
+    
+    # Create figure with appropriate size based on number of personas and months
+    fig_height = max(8, len(unique_personas) * 1.5)
+    fig_width = max(12, months * 2)
+    
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+    
+    # Create a colormap for personas
+    persona_colors = dict(zip(unique_personas, 
+                              sns.color_palette("viridis", len(unique_personas))))
+    
+    # Track company paths between personas
+    company_paths = {}
+    
+    # For each company, track their persona path across months
+    for company_id, company_data in monthly_persona_df.groupby('company_id'):
+        company_data = company_data.sort_values('month')
+        
+        # Need at least two months of data to show transition
+        if len(company_data) >= 2:
+            path = []
+            
+            # Create path with (month_index, persona) tuples
+            for _, row in company_data.iterrows():
+                month_idx = all_months.index(row['month'])
+                persona = row['persona']
+                path.append((month_idx, persona))
+            
+            company_paths[company_id] = path
+    
+    # Count how many companies in each persona for each month
+    persona_counts = {}
+    
+    for month in all_months:
+        month_data = monthly_persona_df[monthly_persona_df['month'] == month]
+        counts = month_data['persona'].value_counts().to_dict()
+        persona_counts[month] = counts
+    
+    # Create month positions on x-axis
+    month_positions = np.arange(len(all_months))
+    
+    # Create persona positions on y-axis (with space between personas)
+    persona_spacing = 2
+    persona_positions = {}
+    for i, persona in enumerate(unique_personas):
+        persona_positions[persona] = i * persona_spacing
+    
+    # Plot company movements between personas
+    for company_id, path in company_paths.items():
+        # Skip if the path is too short
+        if len(path) < 2:
+            continue
+        
+        for i in range(len(path) - 1):
+            start_month, start_persona = path[i]
+            end_month, end_persona = path[i+1]
+            
+            # Skip if same persona (no movement)
+            if start_persona == end_persona:
+                continue
+            
+            # Get coordinates
+            x1 = month_positions[start_month]
+            y1 = persona_positions[start_persona]
+            x2 = month_positions[end_month]
+            y2 = persona_positions[end_persona]
+            
+            # Calculate line width based on confidence
+            company_month_start = all_months[start_month]
+            company_month_end = all_months[end_month]
+            
+            confidence_start = monthly_persona_df[
+                (monthly_persona_df['company_id'] == company_id) & 
+                (monthly_persona_df['month'] == company_month_start)
+            ]['confidence'].values[0]
+            
+            confidence_end = monthly_persona_df[
+                (monthly_persona_df['company_id'] == company_id) & 
+                (monthly_persona_df['month'] == company_month_end)
+            ]['confidence'].values[0]
+            
+            # Average confidence affects line transparency
+            avg_confidence = (confidence_start + confidence_end) / 2
+            
+            # Plot connecting line - more confident transitions are more visible
+            ax.plot([x1, x2], [y1, y2], 'k-', alpha=min(0.7, avg_confidence), 
+                    linewidth=1.5, zorder=1)
+    
+    # Plot persona nodes for each month
+    node_radius_scale = 30  # Scale for node size
+    max_radius = 25  # Maximum node radius
+    min_radius = 8   # Minimum node radius
+    
+    for month_idx, month in enumerate(all_months):
+        month_data = monthly_persona_df[monthly_persona_df['month'] == month]
+        
+        for persona in unique_personas:
+            persona_data = month_data[month_data['persona'] == persona]
+            
+            if not persona_data.empty:
+                count = len(persona_data)
+                
+                # Calculate node size based on count
+                radius = min(max_radius, max(min_radius, np.sqrt(count) * node_radius_scale / np.sqrt(len(high_risk_companies))))
+                
+                # Get coordinates
+                x = month_positions[month_idx]
+                y = persona_positions[persona]
+                
+                # Only plot if there's at least one company
+                if count > 0:
+                    ax.scatter(x, y, s=radius**2, color=persona_colors[persona], 
+                               edgecolors='black', linewidth=1.5, zorder=2)
+                    
+                    # Add count label
+                    ax.text(x, y, str(count), ha='center', va='center', 
+                            fontsize=9, fontweight='bold', color='white', zorder=3)
+    
+    # Add text labels for personas on the right side with detailed descriptions
+    for persona, y_pos in persona_positions.items():
+        # Get description from CONFIG
+        description = CONFIG['risk']['persona_patterns'].get(persona, "")
+        shortened_desc = description.split(':')[0] if ':' in description else description
+        
+        ax.text(month_positions[-1] + 0.5, y_pos, f"{persona}: {shortened_desc}", 
+                va='center', ha='left', fontsize=10, bbox=dict(
+                    boxstyle="round,pad=0.3", fc=persona_colors[persona], alpha=0.7, 
+                    ec="black", lw=1))
+    
+    # Add month labels
+    month_labels = [m.strftime('%b %Y') for m in [p.to_timestamp() for p in all_months]]
+    ax.set_xticks(month_positions)
+    ax.set_xticklabels(month_labels, rotation=45, ha='right')
+    
+    # Remove y-axis ticks
+    ax.set_yticks([])
+    
+    # Set axis limits with some padding
+    ax.set_xlim(month_positions[0] - 0.5, month_positions[-1] + 3)
+    
+    if persona_positions:
+        y_min = min(persona_positions.values()) - 2
+        y_max = max(persona_positions.values()) + 2
+        ax.set_ylim(y_min, y_max)
+    
+    # Add grid for x-axis only
+    ax.grid(axis='x', linestyle='--', alpha=0.7)
+    
+    # Add title and labels
+    title = f"High-Risk Client Movement Between Personas\n(Last {months} Months, {len(company_paths)} Companies)"
+    ax.set_title(title, fontsize=16, fontweight='bold')
+    ax.set_xlabel('Month', fontsize=14)
+    
+    # Add annotation about persona filter criteria
+    filter_text = (
+        "Note: Only showing high-risk clients with >2% loan utilization change\n"
+        "and high persona confidence (>0.7). Line transparency shows confidence strength."
+    )
+    plt.figtext(0.5, 0.01, filter_text, ha='center', fontsize=10, 
+                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.15, right=0.85)  # Make room for the annotation and labels
+    
+    return fig
+
+# Integration into main function
 def main(df):
     """
     Main function to execute the entire analysis workflow with improved risk detection,
@@ -1780,17 +2433,29 @@ def main(df):
     print(f"Identified {len(recent_risk_df)} companies with recent risk events")
     print(f"Assigned {persona_df['persona'].nunique() if not persona_df.empty else 0} different personas")
     
-    # 4. Calculate persona affinity scores
+    # 4. Filter out stable companies (less than 2% loan utilization change)
+    print("\nFiltering out companies with stable loan utilization...")
+    dynamic_risk_df = filter_stable_companies(df_with_metrics, recent_risk_df, min_util_change=0.02, months=12)
+    print(f"Filtered to {len(dynamic_risk_df)} companies with significant utilization changes")
+    
+    # 5. Filter for high-risk companies with high confidence
+    print("\nFiltering for high-risk companies with high confidence personas...")
+    high_risk_persona_df = filter_high_risk_companies(risk_df, persona_df, min_confidence=0.7)
+    if high_risk_persona_df is not None:
+    print(f"Found {high_risk_persona_df['company_id'].nunique()} high-risk companies with confident persona assignments")
+    
+    
+    # 6. Calculate persona affinity scores
     print("\nCalculating persona affinity scores...")
     affinity_df = calculate_persona_affinity(persona_df)
     print(f"Calculated affinity scores for {len(affinity_df['company_id'].unique()) if not affinity_df.empty else 0} companies")
     
-    # 5. Track persona transitions with focus on risk increases
+    # 7. Track persona transitions with focus on risk increases
     print("\nTracking persona transitions...")
     transitions_df, risk_increase_df = track_persona_transitions(persona_df)
     print(f"Identified {len(risk_increase_df) if risk_increase_df is not None else 0} risk-increasing transitions")
     
-    # 6. Perform clustering analysis with better descriptions
+    # 8. Perform clustering analysis with better descriptions
     print("\nPerforming clustering analysis...")
     clustering_results = perform_clustering(df_with_metrics)
     if clustering_results is not None:
@@ -1807,27 +2472,27 @@ def main(df):
         feature_df = None
         cluster_profiles_df = None
     
-    # 7. Create persona-based cohort analysis
+    # 9. Create persona-based cohort analysis
     print("\nCreating persona-based cohort analysis...")
     cohort_results = create_personas_cohort_analysis(persona_df)
     if cohort_results[0] is not None:
         cohort_data, risk_cohort_data, quarterly_persona_df = cohort_results
         
-        # 8. Plot enhanced persona cohort analysis
+        # 10. Plot enhanced persona cohort analysis
         print("\nPlotting enhanced persona cohort analysis...")
         cohort_fig = plot_persona_cohort_enhanced(cohort_data)
         if cohort_fig:
             plt.savefig('persona_cohort_analysis.png')
             print("Saved persona cohort analysis to persona_cohort_analysis.png")
         
-        # 9. Plot persona distribution with affinity scores
+        # 11. Plot persona distribution with affinity scores
         print("\nPlotting persona distribution with affinity scores...")
         persona_dist_fig = plot_persona_distribution(persona_df, affinity_df)
         if persona_dist_fig:
             plt.savefig('persona_distribution.png')
             print("Saved persona distribution to persona_distribution.png")
         
-        # 10. Plot persona transitions with focus on risk increases
+        # 12. Plot persona transitions with focus on risk increases
         print("\nPlotting persona transitions with risk focus...")
         transition_figs = plot_persona_transitions(transitions_df, risk_increase_df)
         if transition_figs[0]:
@@ -1842,7 +2507,23 @@ def main(df):
     else:
         quarterly_persona_df = None
     
-    # 11. Plot risky companies with improved visualizations
+    # 13: Plot client persona journey visualization
+    print("\nPlotting client persona journey visualization...")
+    journey_fig = plot_persona_journey(persona_df, risk_df, months=6, max_companies=10)
+    if journey_fig:
+        plt.figure(journey_fig.number)
+        plt.savefig('client_persona_journey.png')
+        print("Saved client persona journey to client_persona_journey.png")
+    
+    # 14: Plot high-risk companies by persona
+    print("\nPlotting high-risk companies by persona...")
+    high_risk_persona_fig = plot_high_risk_by_persona(recent_risk_df)
+    if high_risk_persona_fig:
+        plt.figure(high_risk_persona_fig.number)
+        plt.savefig('high_risk_by_persona.png')
+        print("Saved high-risk by persona visualization to high_risk_by_persona.png")
+    
+    # 15. Plot risky companies with improved visualizations
     print("\nPlotting risky companies with enhanced visualizations...")
     if not recent_risk_df.empty:
         top_risky_companies = recent_risk_df['company_id'].head(5).tolist()
@@ -1862,6 +2543,8 @@ def main(df):
         'risk_df': risk_df,
         'persona_df': persona_df,
         'recent_risk_df': recent_risk_df,
+        'dynamic_risk_df': dynamic_risk_df,  # Add the new filtered risk DataFrame
+        'high_risk_persona_df': high_risk_persona_df,  # Add the high-risk persona DataFrame        
         'affinity_df': affinity_df,
         'transitions_df': transitions_df,
         'risk_increase_df': risk_increase_df,
@@ -1993,3 +2676,17 @@ if __name__ == "__main__":
     
     # Run the main analysis pipeline
     results = main(df)
+    
+    # Add the new high-risk persona flow visualization
+    print("\nPlotting high-risk client persona flow over time...")
+    high_risk_flow_fig = plot_high_risk_persona_flow(
+        results['persona_df'], 
+        results['data'], 
+        results['risk_df'], 
+        months=6
+    )
+    
+    if high_risk_flow_fig:
+        plt.figure(high_risk_flow_fig.number)
+        plt.savefig('high_risk_client_flow.png')
+        print("Saved high-risk client persona flow to high_risk_client_flow.png")
