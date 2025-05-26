@@ -383,6 +383,176 @@ def get_persona_specific_adjustments(persona: str, persona_config: Dict) -> Dict
     
     return adjustments
 
+def calculate_utilization_lifecycle_adjustment(stage: str, time_progress: float) -> float:
+    """
+    Calculate utilization adjustment based on business lifecycle stage and time progression.
+    
+    This function simulates how companies in different lifecycle stages adjust their
+    credit utilization patterns over time, reflecting realistic business behaviors.
+    
+    Parameters:
+    -----------
+    stage : str
+        Business lifecycle stage ('Startup', 'Growth', 'Maturity', 'Declining')
+    time_progress : float
+        Progress through the time period (0.0 to 1.0)
+        
+    Returns:
+    --------
+    float
+        Utilization adjustment factor (can be positive or negative)
+    """
+    
+    if stage == 'Startup':
+        # Startups often increase utilization over time as they burn through initial capital
+        # Early stage: lower utilization, later stage: higher utilization
+        # Pattern: starts low, accelerates in middle, then stabilizes
+        if time_progress < 0.3:
+            # Early startup phase - conservative usage
+            adjustment = time_progress * 0.1
+        elif time_progress < 0.7:
+            # Growth phase - rapidly increasing utilization
+            adjustment = 0.03 + (time_progress - 0.3) * 0.2
+        else:
+            # Later stage - high but stabilizing utilization
+            adjustment = 0.11 + (time_progress - 0.7) * 0.05
+            
+    elif stage == 'Growth':
+        # Growth companies have cyclical patterns with overall upward trend
+        # Combines seasonal variation with growth trajectory
+        seasonal_component = 0.02 * np.sin(2 * np.pi * time_progress * 2)  # 2 cycles over the period
+        growth_component = time_progress * 0.08  # Steady growth in utilization
+        adjustment = seasonal_component + growth_component
+        
+    elif stage == 'Maturity':
+        # Mature companies have stable, predictable patterns with minimal drift
+        # Small seasonal variations around a stable baseline
+        seasonal_component = 0.01 * np.sin(2 * np.pi * time_progress)  # 1 cycle over the period
+        stability_drift = (time_progress - 0.5) * 0.02  # Slight drift over time
+        adjustment = seasonal_component + stability_drift
+        
+    else:  # Declining stage
+        # Declining companies show increasing desperation over time
+        # Accelerating utilization increase as situation worsens
+        base_increase = time_progress * 0.15  # Linear increase
+        acceleration = (time_progress ** 2) * 0.1  # Accelerating component
+        stress_spikes = 0.03 * np.sin(2 * np.pi * time_progress * 3)  # More frequent stress periods
+        adjustment = base_increase + acceleration + abs(stress_spikes)
+    
+    return adjustment
+
+def calculate_utilization_consistency_bonus(company_data: Dict, persona: str) -> float:
+    """
+    Calculate a consistency bonus based on how well the company's utilization pattern
+    matches expected patterns for their persona type.
+    
+    This is a helper function that can be used to add more realistic variation
+    to utilization patterns based on business persona characteristics.
+    
+    Parameters:
+    -----------
+    company_data : Dict
+        Company financial parameters
+    persona : str
+        Business persona type
+        
+    Returns:
+    --------
+    float
+        Consistency bonus factor (-0.05 to +0.05)
+    """
+    
+    # Get persona-specific utilization characteristics
+    persona_characteristics = {
+        'innovation_economy': {'volatility': 'high', 'trend': 'increasing'},
+        'deteriorating_health': {'volatility': 'high', 'trend': 'increasing'},
+        'rapidly_growing': {'volatility': 'moderate', 'trend': 'increasing'},
+        'strategic_planner': {'volatility': 'low', 'trend': 'stable'},
+        'cash_flow_inventory_manager': {'volatility': 'low', 'trend': 'stable'},
+        'seasonal_borrower': {'volatility': 'high', 'trend': 'cyclical'},
+        'cash_flow_business': {'volatility': 'low', 'trend': 'stable'},
+        'financially_conservative': {'volatility': 'very_low', 'trend': 'decreasing'},
+        'conservative_operator': {'volatility': 'very_low', 'trend': 'stable'}
+    }
+    
+    characteristics = persona_characteristics.get(persona, {'volatility': 'moderate', 'trend': 'stable'})
+    
+    # Base adjustment is neutral
+    adjustment = 0.0
+    
+    # Apply persona-specific patterns
+    volatility_level = characteristics['volatility']
+    if volatility_level == 'very_low':
+        adjustment += -0.02  # More stable, lower utilization
+    elif volatility_level == 'high':
+        adjustment += 0.02   # More variable, higher utilization
+    
+    trend = characteristics['trend']
+    if trend == 'decreasing':
+        adjustment += -0.03  # Gradually decreasing utilization
+    elif trend == 'increasing':
+        adjustment += 0.03   # Gradually increasing utilization
+    
+    return max(-0.05, min(0.05, adjustment))
+
+def calculate_business_event_probability(stage: str, persona: str, current_utilization: float) -> float:
+    """
+    Calculate the probability of a business event occurring based on multiple factors.
+    
+    This function provides more sophisticated event modeling that considers not just
+    lifecycle stage but also current financial stress and persona characteristics.
+    
+    Parameters:
+    -----------
+    stage : str
+        Business lifecycle stage
+    persona : str
+        Business persona type
+    current_utilization : float
+        Current utilization rate
+        
+    Returns:
+    --------
+    float
+        Event probability (0.0 to 1.0)
+    """
+    
+    # Base probability from original function
+    base_probabilities = {
+        'Startup': 0.008,
+        'Growth': 0.005,
+        'Maturity': 0.003,
+        'Declining': 0.007
+    }
+    
+    base_prob = base_probabilities.get(stage, 0.003)
+    
+    # Adjust based on current stress level (high utilization = more events)
+    if current_utilization > 0.9:
+        stress_multiplier = 2.0
+    elif current_utilization > 0.8:
+        stress_multiplier = 1.5
+    elif current_utilization > 0.7:
+        stress_multiplier = 1.2
+    else:
+        stress_multiplier = 1.0
+    
+    # Persona-specific adjustments
+    persona_multipliers = {
+        'innovation_economy': 1.3,        # High-risk startups have more events
+        'deteriorating_health': 1.8,     # Distressed companies have many events
+        'seasonal_borrower': 1.2,        # Seasonal patterns create more events
+        'financially_conservative': 0.7,  # Conservative companies have fewer events
+        'conservative_operator': 0.6     # Very stable operations
+    }
+    
+    persona_multiplier = persona_multipliers.get(persona, 1.0)
+    
+    # Calculate final probability
+    final_probability = base_prob * stress_multiplier * persona_multiplier
+    
+    return min(0.02, final_probability)  # Cap at 2% per day
+
 def generate_daily_metrics(company_data: Dict, persona: str, persona_config: Dict,
                           day_idx: int, total_days: int, current_date: datetime) -> Dict:
     """
@@ -3161,7 +3331,7 @@ def run_enhanced_business_lifecycle_pipeline(df_raw: pd.DataFrame,
     df_features = calculate_comprehensive_business_features(df_raw)
     
     if save_results:
-        df_features.to_csv(f"{output_dir}/business_lifecycle_features.csv", index=False)
+        # df_features.to_csv(f"{output_dir}/business_lifecycle_features.csv", index=False)
         print(f"💾 Saved business lifecycle features to {output_dir}/")
     
     # Stage 2: Business Pattern Discovery
@@ -3199,7 +3369,7 @@ def run_enhanced_business_lifecycle_pipeline(df_raw: pd.DataFrame,
     persona_results = apply_business_lifecycle_rules_to_clients(df_features, business_rules)
     
     if save_results:
-        persona_results.to_csv(f"{output_dir}/business_persona_assignments.csv", index=False)
+        # persona_results.to_csv(f"{output_dir}/business_persona_assignments.csv", index=False)
         print(f"💾 Saved persona assignments to {output_dir}/")
     
     # Stage 5: Business Intelligence Reports
@@ -3216,11 +3386,11 @@ def run_enhanced_business_lifecycle_pipeline(df_raw: pd.DataFrame,
     portfolio_dashboard = create_business_portfolio_dashboard(persona_results, business_rules)
     
     if save_results:
-        with open(f"{output_dir}/executive_summary.txt", 'w') as f:
+        with open(f"{output_dir}/executive_summary.txt", 'w', encoding='utf-8') as f:
             f.write(executive_summary)
-        with open(f"{output_dir}/business_insights.txt", 'w') as f:
+        with open(f"{output_dir}/business_insights.txt", 'w', encoding='utf-8') as f:
             f.write(business_insights)
-        with open(f"{output_dir}/portfolio_dashboard.json", 'w') as f:
+        with open(f"{output_dir}/portfolio_dashboard.json", 'w', encoding='utf-8') as f:
             json.dump(convert_to_serializable(portfolio_dashboard), f, indent=2)
         print(f"💾 Saved business reports to {output_dir}/")
     
