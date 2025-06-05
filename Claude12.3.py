@@ -762,10 +762,7 @@ def detect_traditional_risk_patterns_efficient(df):
             persona = None
             persona_confidence = 0.0
             
-            # Apply all the original risk patterns (deteriorating_90d, credit_dependent, etc.)
-            # ... (include all the original risk pattern logic here)
-            
-            # For brevity, I'll include a few key patterns
+            # ---- RISK PATTERN 1: Rising utilization with declining deposits ----
             if not pd.isna(current_row.get('util_change_90d')) and not pd.isna(current_row.get('deposit_change_90d')):
                 util_change_90d = current_row['util_change_90d']
                 deposit_change_90d = current_row['deposit_change_90d']
@@ -783,7 +780,7 @@ def detect_traditional_risk_patterns_efficient(df):
                         persona = "deteriorating_health"
                         persona_confidence = 0.8
             
-            # High utilization with low deposit ratio
+            # ---- RISK PATTERN 2: High utilization with low deposit ratio ----
             if current_util > 0.75 and current_row.get('deposit_loan_ratio', float('inf')) < 0.8:
                 severity = "high" if current_util > 0.9 else "medium"
                 risk_flags.append('credit_dependent')
@@ -796,6 +793,223 @@ def detect_traditional_risk_patterns_efficient(df):
                 if persona_confidence < 0.7:
                     persona = "credit_dependent"
                     persona_confidence = 0.7
+            
+            # ---- RISK PATTERN 3: Rapid deposit decline with stable utilization ----
+            if not pd.isna(current_row.get('deposit_change_30d')) and not pd.isna(current_row.get('util_change_30d')):
+                deposit_change_30d = current_row['deposit_change_30d']
+                util_change_30d = current_row['util_change_30d']
+                
+                if deposit_change_30d < -0.15 and abs(util_change_30d) < 0.05:
+                    severity = "high" if deposit_change_30d < -0.25 else "medium"
+                    risk_flags.append('cash_drain_30d')
+                    risk_descriptions.append(
+                        f"[{severity.upper()}] 30d: Rapid deposit decline ({deposit_change_30d:.1%}) "
+                        f"with stable utilization (change: {util_change_30d:.1%})"
+                    )
+                    risk_levels.append(severity)
+                    
+                    if persona_confidence < 0.75:
+                        persona = "cash_constrained"
+                        persona_confidence = 0.75
+            
+            # ---- RISK PATTERN 4: Increasing volatility in both metrics ----
+            if not pd.isna(current_row.get('util_volatility_30d')) and not pd.isna(current_row.get('deposit_volatility_30d')):
+                # Compare current volatility to historical volatility
+                current_vol_u = current_row['util_volatility_30d']
+                current_vol_d = current_row['deposit_volatility_30d']
+                
+                # Get historical volatility (from earlier period)
+                if i > 90:
+                    past_vol_u = company_data.iloc[i-90]['util_volatility_30d']
+                    past_vol_d = company_data.iloc[i-90]['deposit_volatility_30d']
+                    
+                    if not pd.isna(past_vol_u) and not pd.isna(past_vol_d):
+                        if current_vol_u > past_vol_u * 1.5 and current_vol_d > past_vol_d * 1.5:
+                            risk_flags.append('volatility_increase')
+                            risk_descriptions.append(
+                                f"[MEDIUM] Significant increase in volatility for both metrics "
+                                f"(util: {past_vol_u:.4f}→{current_vol_u:.4f}, deposit: {past_vol_d:.4f}→{current_vol_d:.4f})"
+                            )
+                            risk_levels.append("medium")
+                            
+                            if persona_confidence < 0.6:
+                                persona = "aggressive_expansion"
+                                persona_confidence = 0.6
+            
+            # ---- RISK PATTERN 5: Loan Utilization Seasonality ----
+            if current_row.get('util_is_seasonal') == True:
+                amplitude = current_row.get('util_seasonal_amplitude', 0)
+                if amplitude > 0.2:  # More than 20% seasonal variation
+                    risk_flags.append('seasonal_util')
+                    risk_descriptions.append(
+                        f"[LOW] Seasonal loan utilization with {amplitude:.1%} amplitude "
+                        f"(period: {current_row.get('util_seasonal_period', 0):.0f} days)"
+                    )
+                    risk_levels.append("low")
+                    
+                    if persona_confidence < 0.65:
+                        persona = "seasonal_loan_user"
+                        persona_confidence = 0.65
+            
+            # ---- RISK PATTERN 6: Deposit Seasonality ----
+            if current_row.get('deposit_is_seasonal') == True:
+                amplitude = current_row.get('deposit_seasonal_amplitude', 0)
+                if amplitude > 0.25:  # More than 25% seasonal variation
+                    risk_flags.append('seasonal_deposit')
+                    risk_descriptions.append(
+                        f"[LOW] Seasonal deposit pattern with {amplitude:.1%} amplitude "
+                        f"(period: {current_row.get('deposit_seasonal_period', 0):.0f} days)"
+                    )
+                    risk_levels.append("low")
+                    
+                    if persona_confidence < 0.65 and persona != "seasonal_loan_user":
+                        persona = "seasonal_deposit_pattern"
+                        persona_confidence = 0.65
+            
+            # ---- RISK PATTERN 7: Combined Seasonal Risk ----
+            if (current_row.get('util_is_seasonal') == True and 
+                current_row.get('deposit_is_seasonal') == True):
+                util_amplitude = current_row.get('util_seasonal_amplitude', 0)
+                deposit_amplitude = current_row.get('deposit_seasonal_amplitude', 0)
+                
+                # If loan volatility is higher than deposit volatility, potential risk
+                if util_amplitude > deposit_amplitude * 1.5 and util_amplitude > 0.25:
+                    risk_flags.append('seasonal_imbalance')
+                    risk_descriptions.append(
+                        f"[MEDIUM] Seasonal imbalance: Loan utilization amplitude ({util_amplitude:.1%}) "
+                        f"exceeds deposit amplitude ({deposit_amplitude:.1%})"
+                    )
+                    risk_levels.append("medium")
+            
+            # ---- NEW RISK PATTERN 8: Loan utilization increasing but deposits stagnant ----
+            if not pd.isna(current_row.get('util_change_90d')) and not pd.isna(current_row.get('deposit_change_90d')):
+                util_change_90d = current_row['util_change_90d']
+                deposit_change_90d = current_row['deposit_change_90d']
+                
+                if util_change_90d > 0.08 and abs(deposit_change_90d) < 0.02:
+                    severity = "medium" if util_change_90d > 0.15 else "low"
+                    risk_flags.append('stagnant_growth')
+                    risk_descriptions.append(
+                        f"[{severity.upper()}] 90d: Increasing utilization (+{util_change_90d:.1%}) "
+                        f"with stagnant deposits (change: {deposit_change_90d:.1%})"
+                    )
+                    risk_levels.append(severity)
+                    
+                    if persona_confidence < 0.7:
+                        persona = "stagnant_growth"
+                        persona_confidence = 0.7
+            
+            # ---- NEW RISK PATTERN 9: Sudden spikes in loan utilization ----
+            if i >= 7:  # Need at least 7 days of history for short-term spike detection
+                # Get short-term utilization history (7 days)
+                recent_utils = company_data.iloc[i-7:i+1]['loan_utilization'].values
+                if len(recent_utils) >= 2:
+                    # Calculate maximum day-to-day change
+                    day_changes = np.diff(recent_utils)
+                    max_day_change = np.max(day_changes) if len(day_changes) > 0 else 0
+                    
+                    if max_day_change > 0.15:  # 15% spike in a single day
+                        severity = "high" if max_day_change > 0.25 else "medium"
+                        risk_flags.append('utilization_spike')
+                        risk_descriptions.append(
+                            f"[{severity.upper()}] Recent: Sudden utilization spike detected "
+                            f"(+{max_day_change:.1%} in a single day)"
+                        )
+                        risk_levels.append(severity)
+                        
+                        if persona_confidence < 0.75:
+                            persona = "utilization_spikes"
+                            persona_confidence = 0.75
+            
+            # ---- NEW RISK PATTERN 10: Seasonal pattern breaking ----
+            if 'deposit_seasonal_deviation' in current_row and not pd.isna(current_row['deposit_seasonal_deviation']):
+                seasonal_deviation = current_row['deposit_seasonal_deviation']
+                
+                if seasonal_deviation > 0.3:  # 30% deviation from expected seasonal pattern
+                    severity = "medium" if seasonal_deviation > 0.5 else "low"
+                    risk_flags.append('seasonal_break')
+                    risk_descriptions.append(
+                        f"[{severity.upper()}] Seasonal pattern break: "
+                        f"Deposit deviation {seasonal_deviation:.1%} from expected seasonal pattern"
+                    )
+                    risk_levels.append(severity)
+                    
+                    if persona_confidence < 0.75:
+                        persona = "seasonal_pattern_breaking"
+                        persona_confidence = 0.75
+            
+            # ---- NEW RISK PATTERN 11: Approaching credit limit ----
+            if current_util > 0.9:
+                # Look at rate of approach to limit
+                if i >= 30 and 'loan_utilization' in company_data.columns:
+                    past_util = company_data.iloc[i-30]['loan_utilization']
+                    util_velocity = (current_util - past_util) / 30  # Daily increase
+                    
+                    if util_velocity > 0.002:  # More than 0.2% per day increase
+                        severity = "high" if current_util > 0.95 else "medium"
+                        risk_flags.append('approaching_limit')
+                        risk_descriptions.append(
+                            f"[{severity.upper()}] Current utilization near limit ({current_util:.1%}) "
+                            f"with velocity of +{util_velocity*100:.2f}% per day"
+                        )
+                        risk_levels.append(severity)
+                        
+                        if persona_confidence < 0.85:
+                            persona = "approaching_limit"
+                            persona_confidence = 0.85
+            
+            # ---- NEW RISK PATTERN 12: Withdrawal intensity ----
+            if 'withdrawal_count_change' in current_row and not pd.isna(current_row['withdrawal_count_change']):
+                withdrawal_count_change = current_row['withdrawal_count_change']
+                withdrawal_avg_change = current_row.get('withdrawal_avg_change', 0)
+                
+                if withdrawal_count_change > 0.5 or withdrawal_avg_change > 0.3:
+                    severity = "medium" if (withdrawal_count_change > 1 or withdrawal_avg_change > 0.5) else "low"
+                    risk_flags.append('withdrawal_intensive')
+                    risk_descriptions.append(
+                        f"[{severity.upper()}] Increased withdrawal activity: "
+                        f"Count change +{withdrawal_count_change:.1%}, "
+                        f"Average size change +{withdrawal_avg_change:.1%}"
+                    )
+                    risk_levels.append(severity)
+                    
+                    if persona_confidence < 0.7:
+                        persona = "withdrawal_intensive"
+                        persona_confidence = 0.7
+            
+            # ---- NEW RISK PATTERN 13: Deposit concentration risk ----
+            if 'deposit_concentration_gini' in current_row and not pd.isna(current_row['deposit_concentration_gini']):
+                gini = current_row['deposit_concentration_gini']
+                
+                if gini > 0.6:
+                    severity = "medium" if gini > 0.75 else "low"
+                    risk_flags.append('deposit_concentration')
+                    risk_descriptions.append(
+                        f"[{severity.upper()}] Deposit concentration detected: "
+                        f"Concentration index {gini:.2f}"
+                    )
+                    risk_levels.append(severity)
+                    
+                    if persona_confidence < 0.65:
+                        persona = "deposit_concentration"
+                        persona_confidence = 0.65
+            
+            # ---- NEW RISK PATTERN 14: Deposit balance below historical low with high utilization ----
+            if 'deposit_to_min_ratio' in current_row and not pd.isna(current_row['deposit_to_min_ratio']):
+                min_ratio = current_row['deposit_to_min_ratio']
+                
+                if min_ratio < 1.1 and current_util > 0.7:
+                    severity = "high" if min_ratio <= 1.0 else "medium"
+                    risk_flags.append('historical_low_deposits')
+                    risk_descriptions.append(
+                        f"[{severity.upper()}] Deposits near historical low "
+                        f"({min_ratio:.2f}x minimum) with high utilization ({current_util:.1%})"
+                    )
+                    risk_levels.append(severity)
+                    
+                    if persona_confidence < 0.8:
+                        persona = "historical_low_deposits"
+                        persona_confidence = 0.8
             
             # If any risks were detected, record them
             if risk_flags:
@@ -1368,7 +1582,7 @@ def integrated_bank_client_risk_analysis(df):
 # DATA GENERATION FOR TESTING
 #######################################################
 
-def generate_comprehensive_test_data(num_companies=100, days=730):
+def generate_comprehensive_test_data(num_companies=100, days=1460):
     """
     Generate comprehensive test data that includes both traditional and sparse patterns.
     """
